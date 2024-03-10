@@ -23,7 +23,15 @@ export default function HomeScreen() {
     const [isRecording, setIsRecording] = useState([false, false, false]);
     const [recordings, setRecordings] = useState([null, null, null]);
     const [permissionsGranted, setPermissionsGranted] = useState(false);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [flash, setFlash] = useState(false);
+    const [soundStatus, setSoundStatus] = useState({
+        applause: { isPlaying: false, isFlashing: false },
+        gameOver: { isPlaying: false, isFlashing: false },
+        slowTrombone: { isPlaying: false, isFlashing: false },
+    });
 
+    // creates the database table if it does not exist
     useEffect(() => {
         db.transaction(tx => {
             tx.executeSql(
@@ -34,11 +42,13 @@ export default function HomeScreen() {
         requestPermissions();
     }, []);
 
+    // function that requests permission for app to use devices microphone
     const requestPermissions = async () => {
         const response = await Audio.requestPermissionsAsync();
         setPermissionsGranted(response.status === 'granted');
     };
 
+    // function that loads recordings from the database
     const loadRecordings = () => {
         db.transaction(tx => {
             tx.executeSql(
@@ -56,6 +66,7 @@ export default function HomeScreen() {
         });
     };
 
+    // function to start a recording
     const startRecording = async (index) => {
         if (!permissionsGranted) return;
         try {
@@ -80,6 +91,7 @@ export default function HomeScreen() {
         }
     };
 
+    // function to stop the recording
    const stopRecording = async (index) => {
         try {
             const recording = recordings[index];
@@ -98,6 +110,7 @@ export default function HomeScreen() {
         }
     };
 
+    // function that stores the recording in the database
     const saveRecording = (uri, index) => {
         db.transaction(tx => {
             tx.executeSql(
@@ -111,6 +124,7 @@ export default function HomeScreen() {
         });
     };
 
+    // function to play the recorded recording
     const playRecording = async (uri) => {
         try {
             const { sound } = await Audio.Sound.createAsync({ uri });
@@ -120,6 +134,8 @@ export default function HomeScreen() {
         }
     };
 
+
+    // function to delete the recording stored in the database
     const deleteRecording = (index) => {
         db.transaction(tx => {
             tx.executeSql(
@@ -134,6 +150,7 @@ export default function HomeScreen() {
         });
     };
 
+    // function that handles the press of the recording button, calling on functions
     const handlePress = (index) => {
         if (isRecording[index]) {
             stopRecording(index);
@@ -150,20 +167,44 @@ export default function HomeScreen() {
         return 'Record';
     };
 
-    const playSound = async (soundResource) => {
+    // Object to keep track of intervals for each sound
+    const flashIntervals = {};
+
+    // function that plays the preinstalled sounds
+    const playSound = async (soundResource, soundName) => {
         try {
-            // Load the sound
+            // Indicate that a sound is playing and should start flashing
+            setSoundStatus(prev => ({ ...prev, [soundName]: { isPlaying: true, isFlashing: true } }));
+
             const { sound } = await Audio.Sound.createAsync(soundResource);
-            // Play the loaded sound
             await sound.playAsync();
-            // When playback is done, unload the sound from memory
+
+            // Initialize flashing effect for this sound
+            if (!flashIntervals[soundName]) {
+                flashIntervals[soundName] = setInterval(() => {
+                    setSoundStatus(prev => ({
+                        ...prev,
+                        [soundName]: { ...prev[soundName], isFlashing: !prev[soundName].isFlashing },
+                    }));
+                }, 75);
+            }
+
             sound.setOnPlaybackStatusUpdate(async (playbackStatus) => {
                 if (playbackStatus.didJustFinish && !playbackStatus.isLooping) {
                     await sound.unloadAsync();
+                    clearInterval(flashIntervals[soundName]);
+                    flashIntervals[soundName] = null; // Clear interval reference
+
+                    // Reset playing and flashing state
+                    setSoundStatus(prev => ({ ...prev, [soundName]: { isPlaying: false, isFlashing: false } }));
                 }
             });
         } catch (error) {
-            console.error('Error playing sound:', error);
+            console.error(`Error playing sound (${soundName}):`, error);
+            clearInterval(flashIntervals[soundName]);
+            flashIntervals[soundName] = null; // Ensure interval is cleared in case of an error
+            // Reset playing and flashing state in case of an error
+            setSoundStatus(prev => ({ ...prev, [soundName]: { isPlaying: false, isFlashing: false } }));
         }
     };
 
@@ -174,20 +215,20 @@ export default function HomeScreen() {
                 <Text style={styles.sectionTitle}>Default Sounds</Text>
                 {/* Pre-programmed Sound Buttons */}
                 <TouchableOpacity
-                    style={styles.button}
-                    onPress={() => playSound(require('../assets/sounds/applause.mp3'))}
+                    style={[styles.button, soundStatus.applause.isFlashing ? styles.flashing : {}]}
+                    onPress={() => playSound(require('../assets/sounds/applause.mp3'), 'applause')}
                 >
                     <Text style={styles.buttonText}>APPLAUSE</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                    style={styles.button}
-                    onPress={() => playSound(require('../assets/sounds/gameOver.mp3'))}
+                    style={[styles.button, soundStatus.gameOver.isFlashing ? styles.flashing : {}]}
+                    onPress={() => playSound(require('../assets/sounds/gameOver.mp3'), 'gameOver')}
                 >
                     <Text style={styles.buttonText}>GAME OVER</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                    style={styles.button}
-                    onPress={() => playSound(require('../assets/sounds/slowTrombone.mp3'))}
+                    style={[styles.button, soundStatus.slowTrombone.isFlashing ? styles.flashing : {}]}
+                    onPress={() => playSound(require('../assets/sounds/slowTrombone.mp3'), 'slowTrombone')}
                 >
                     <Text style={styles.buttonText}>SAD TROMBONE</Text>
                 </TouchableOpacity>
@@ -231,10 +272,10 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: 'orange',
+        color: 'red',
     },
     button: {
-        backgroundColor: 'blue',
+        backgroundColor: 'lightblue',
         paddingHorizontal: 20,
         paddingVertical: 10,
         margin: 5,
@@ -250,4 +291,7 @@ const styles = StyleSheet.create({
         color: 'white',
         fontSize: 16,
     },
+    flashing: {
+        backgroundColor: 'orange',
+    }
 });

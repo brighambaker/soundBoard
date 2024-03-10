@@ -17,6 +17,12 @@ play back, and delete their recordings. It utilizes Expo's AV library for handli
 - Delete recordings.
 - Store recordings locally using SQLite.
 
+## Application Structure
+The main logic of the Soundboard App, including audio recording, playback, and database handling, is implemented in the `HomeScreen.js` file.
+- **`App.js`**: Sets up the application's root component
+- **`HomeScreen.js`**: Contains the core functionality of the Soundboard App, including interfaces 
+for recording management, playback of pre-installed sounds, and interaction with the SQLite database.
+
 ## Dependencies
 This project relies on the following Expo and React Native libraries:
 
